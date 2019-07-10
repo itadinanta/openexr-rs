@@ -128,7 +128,12 @@ CEXR_Header* CEXR_Header_new(const CEXR_Box2i *displayWindow,
 
 void CEXR_Header_insert_channel(CEXR_Header *header, const char name[], const CEXR_Channel channel) {
     auto h = reinterpret_cast<Header*>(header);
-    h->channels().insert(name, *reinterpret_cast<const Channel *>(&channel));
+    Channel ch;
+    ch.type = static_cast<PixelType>(channel.pixel_type);
+    ch.xSampling = channel.x_sampling;
+    ch.ySampling = channel.y_sampling;
+    ch.pLinear = channel.p_linear;
+    h->channels().insert(name, ch);
 }
 
 const CEXR_Channel *CEXR_Header_get_channel(const CEXR_Header *header, const char name[]) {
@@ -195,6 +200,29 @@ void CEXR_Header_set_envmap(CEXR_Header *header, int envmap) {
     addEnvmap(*reinterpret_cast<Header *>(header), static_cast<Imf::Envmap>(envmap));
 }
 
+bool CEXR_Header_has_multiview(const CEXR_Header *header) {
+    return hasMultiView(*reinterpret_cast<const Header *>(header));
+}
+
+size_t CEXR_Header_multiview(const CEXR_Header *header, CEXR_Slice *out) {
+    auto &v = multiView(*reinterpret_cast<const Header *>(header));
+    if (out != nullptr) {
+        for (size_t i = 0; i < v.size(); ++i) {
+            out[i] = CEXR_Slice{const_cast<void*>(static_cast<const void*>(v[0].data())), v[0].size()};
+        }
+    }
+    return v.size();
+}
+
+void CEXR_Header_set_multiview(CEXR_Header *header, const CEXR_Slice* views, size_t view_count) {
+    StringVector v;
+    v.reserve(view_count);
+    for (size_t i = 0; i < view_count; ++i) {
+        v.emplace_back(reinterpret_cast<const char*>(views[i].ptr), views[i].len);
+    }
+    addMultiView(*reinterpret_cast<Header *>(header), v);
+}
+
 void CEXR_Header_erase_attribute(CEXR_Header *header, const char *attribute) {
     reinterpret_cast<Header *>(header)->erase(attribute);
 }
@@ -232,7 +260,7 @@ int CEXR_FrameBuffer_get_channel(const CEXR_FrameBuffer *frame_buffer, const cha
 
     if (slice_ptr != 0) {
         *out = CEXR_Channel {
-            *reinterpret_cast<const CEXR_PixelType *>(&(slice_ptr->type)),
+            static_cast<CEXR_PixelType>(slice_ptr->type),
             slice_ptr->xSampling,
             slice_ptr->ySampling,
             false // Bogus value, but this function is only used internally anyway
